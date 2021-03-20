@@ -15,6 +15,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Text.RegularExpressions;
 using Starkku.Utilities.ExtensionMethods;
 
 namespace Starkku.Utilities.FileTypes
@@ -566,6 +568,111 @@ namespace Starkku.Utilities.FileTypes
         }
 
         /// <summary>
+        /// Gets whether or not INI file section contains specified key.
+        /// </summary>
+        /// <param name="sectionName">Name of the INI file section.</param>
+        /// <param name="keyName">Name of the INI key.</param>
+        /// <returns>True if INI file section exists and contains specified key, otherwise false.</returns>
+        /// 
+        public bool SectionContainsKey(string sectionName, string keyName)
+        {
+            INISection section = iniSections.Find(i => i.Name == sectionName);
+
+            if (section == null)
+                return false;
+
+
+
+            return section.KeyValuePairs.FindIndex(x => x.Key == keyName) != -1;
+        }
+
+
+        /// <summary>
+        /// Gets all names of keys from INI section matching given regex pattern..
+        /// </summary>
+        /// <param name="sectionName">Name of the INI file section.</param>
+        /// <param name="pattern">Regex pattern to match key names against.</param>
+        /// <returns>Array of strings containing names of all keys matching with the specified pattern.</returns>
+        /// 
+        public string[] GetMatchingKeyNames(string sectionName, string pattern)
+        {
+            INISection section = iniSections.Find(i => i.Name == sectionName);
+
+            if (section == null)
+                return null;
+
+            List<string> keys = new List<string>();
+
+            foreach (var kvp in section.KeyValuePairs)
+            {
+                if (Regex.IsMatch(kvp.Key, pattern))
+                    keys.Add(kvp.Key);
+            }
+
+            return keys.ToArray();
+        }
+
+        /// <summary>
+        /// Moves a key in INI file section matching specific name to a specific position in order in INI file.
+        /// </summary>
+        /// <param name="sectionName">Name of the INI file section.</param>
+        /// <param name="keyName">Name of the INI key.</param>
+        /// <param name="positionIndex">The position to move the key into. Values higher than lower than the currently available amount of keys get constricted into that range.</param>
+        /// <returns>True if position was changed, otherwise false.</returns>
+        public bool SetKeyPosition(string sectionName, string keyName, int positionIndex)
+        {
+            INISection section = iniSections.Find(i => i.Name == sectionName);
+
+            if (section != null)
+            {
+                INIKeyValuePair kvp = section.KeyValuePairs.Find(x => x.Key == keyName);
+
+                if (kvp == null)
+                    return false;
+
+                section.KeyValuePairs.Remove(kvp);
+                section.KeyValuePairs.Insert(positionIndex, kvp);
+                _altered = true;
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Sorts keys in the INI file section based on a list of regex patterns matching key names.
+        /// </summary>
+        /// <param name="sectionName">Name of the INI file section.</param>
+        /// <param name="sortPatterns">Regex patterns to match to key names used to determine sorting order.</param>
+        public void SortSectionKeys(string sectionName, string[] sortPatterns)
+        {
+            INISection section = iniSections.Find(i => i.Name == sectionName);
+
+            if (section != null)
+            {
+                for (int i = 0; i < sortPatterns.Length; i++)
+                {
+                    foreach (INIKeyValuePair kvp in section.KeyValuePairs)
+                    {
+                        int index = Regex.IsMatch(kvp.Key, sortPatterns[i]) ? i : -1;
+
+                        if (index != -1)
+                            kvp.SortIndex = index;
+                    }
+                }
+
+                section.KeyValuePairs = section.KeyValuePairs.OrderBy(x => x.SortIndex).ToList();
+
+                foreach (INIKeyValuePair kvp in section.KeyValuePairs)
+                {
+                    kvp.SortIndex = int.MaxValue;
+                }
+
+                _altered = true;
+            }
+        }
+
+        /// <summary>
         /// Returns an array of string key-value pairs of key names and values from a INI file section.
         /// </summary>
         /// <param name="sectionName">Name of the INI file section.</param>
@@ -869,7 +976,7 @@ namespace Starkku.Utilities.FileTypes
     }
 
     /// <summary>
-    /// INI key value pair class.
+    /// INI key-value pair class.
     /// </summary>
     internal class INIKeyValuePair
     {
@@ -882,6 +989,11 @@ namespace Starkku.Utilities.FileTypes
         /// INI value.
         /// </summary>
         public string Value = null;
+
+        /// <summary>
+        /// Sorting index for key-value pair.
+        /// </summary>
+        public int SortIndex = int.MaxValue;
 
         private List<INIComment> attachedComments = new List<INIComment>();
 

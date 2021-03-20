@@ -105,23 +105,24 @@ namespace Starkku.Utilities.FileTypes
                 if (string.IsNullOrEmpty(lineTrimmed))
                 {
                     lastLineWasWhiteSpace = true;
+
+                    if (lastLineWasSection)
+                        currentSection.EmptyLineCount++;
+                    else
+                        lastLine.EmptyLineCount++;
+
                     continue;
                 }
 
                 if (lineTrimmed.StartsWith(";"))
                 {
+                    int whiteSpaceCount = line.Length - line.TrimStart().Length;
                     if (lastLineWasWhiteSpace || currentSection == null)
-                    {
-                        comments.Add(new INIComment(lineTrimmed.ReplaceFirst(";", ""), INICommentPosition.Before));
-                    }
+                        comments.Add(new INIComment(lineTrimmed.ReplaceFirst(";", ""), INICommentPosition.Before, whiteSpaceCount));
                     else if (lastLineWasSection)
-                    {
-                        currentSection.AddComment(lineTrimmed.ReplaceFirst(";", ""), INICommentPosition.After);
-                    }
+                        currentSection.AddComment(lineTrimmed.ReplaceFirst(";", ""), INICommentPosition.After, whiteSpaceCount);
                     else if (lastLine != null)
-                    {
-                        lastLine.AddComment(lineTrimmed.ReplaceFirst(";", ""), INICommentPosition.After);
-                    }
+                        lastLine.AddComment(lineTrimmed.ReplaceFirst(";", ""), INICommentPosition.After, whiteSpaceCount);
 
                     continue;
                 }
@@ -130,22 +131,21 @@ namespace Starkku.Utilities.FileTypes
                 {
                     currentSection = new INISection();
 
-                    if (lineTrimmed.Contains(";"))
-                    {
-                        lineTrimmed = RemoveCommentsFromLine(lineTrimmed, out string sectionComment);
-                        if (sectionComment != null)
-                            currentSection.AddComment(sectionComment, INICommentPosition.Middle);
-                    }
-
                     int start = lineTrimmed.IndexOf('[') + 1;
                     int end = lineTrimmed.IndexOf(']') - 1;
                     currentSection.Name = lineTrimmed.Substring(start, end);
                     INISection sectionMatch = iniSections.Find(x => x.Name == currentSection.Name);
 
-                    if (sectionMatch == null)
+                    if (lineTrimmed.Contains(";"))
                     {
-                        iniSections.Add(currentSection);
+                        string commentLine = line.Replace("[" + currentSection.Name + "]", "");
+                        int whiteSpaceCount = commentLine.Length - commentLine.TrimStart().Length;
+                        string comment = commentLine.Trim().TrimStart(';');
+                        currentSection.AddComment(comment, INICommentPosition.Middle, whiteSpaceCount);
                     }
+
+                    if (sectionMatch == null)
+                        iniSections.Add(currentSection);
                     else
                         currentSection = sectionMatch;
 
@@ -161,6 +161,7 @@ namespace Starkku.Utilities.FileTypes
                 }
                 else
                 {
+                    lastLineWasSection = false;
                     lastLine = AddKeyValuePairFromLine(currentSection, line.Trim());
                 }
 
@@ -174,22 +175,22 @@ namespace Starkku.Utilities.FileTypes
         /// <summary>
         /// Saves the INI file with currently set filename.
         /// </summary>
-        /// <param name="preserveWhiteSpace">If set, empty line is placed between each INI file section.</param>
+        /// <param name="preserveEmptyLines">If set, any empty lines in the original INI file are preserved.</param>
         /// <param name="saveComments">If set, comments are saved in INI file.</param>
         /// <returns>Error message if something went wrong, null otherwise.</returns>
-        public virtual string Save(bool preserveWhiteSpace = true, bool saveComments = true)
+        public virtual string Save(bool preserveEmptyLines = true, bool saveComments = true)
         {
-            return Save(Filename, preserveWhiteSpace, saveComments);
+            return Save(Filename, preserveEmptyLines, saveComments);
         }
 
         /// <summary>
         /// Saves the INI file with specified filename.
         /// </summary>
         /// <param name="filename">Filename to save the INI file to.</param>
-        /// <param name="preserveWhiteSpace">If set, empty line is placed between each INI file section.</param>
+        /// <param name="preserveEmptyLines">If set, any empty lines in the original INI file are preserved.</param>
         /// <param name="saveComments">If set, comments are saved in INI file.</param>
         /// <returns>Error message if something went wrong, null otherwise.</returns>
-        public virtual string Save(string filename, bool preserveWhiteSpace = true, bool saveComments = true)
+        public virtual string Save(string filename, bool preserveEmptyLines = true, bool saveComments = true)
         {
             if (string.IsNullOrEmpty(filename))
                 filename = Filename;
@@ -202,13 +203,28 @@ namespace Starkku.Utilities.FileTypes
                 {
                     var sectionCommentsBefore = sec.GetAllCommentsAtPosition(INICommentPosition.Before);
                     foreach (INIComment comment in sectionCommentsBefore)
-                        lines.Add(";" + comment.CommentText);
+                        lines.Add(comment.GetINIText());
                 }
 
                 var sectionCommentsMiddle = sec.GetAllCommentsAtPosition(INICommentPosition.Middle);
-                string sectionComment = sectionCommentsMiddle.Count > 0 && saveComments ? " ;" + sectionCommentsMiddle[0].CommentText : "";
+                string sectionComment = sectionCommentsMiddle.Count > 0 && saveComments ? sectionCommentsMiddle[0].GetINIText() : "";
 
                 lines.Add("[" + sec.Name + "]" + sectionComment);
+
+                if (saveComments)
+                {
+                    var sectionCommentsAfter = sec.GetAllCommentsAtPosition(INICommentPosition.After);
+                    foreach (INIComment comment in sectionCommentsAfter)
+                        lines.Add(comment.GetINIText());
+                }
+
+                if (preserveEmptyLines)
+                {
+                    for (int i = 0; i < sec.EmptyLineCount; i++)
+                    {
+                        lines.Add("");
+                    }
+                }
 
                 foreach (INIKeyValuePair kvp in sec.KeyValuePairs)
                 {
@@ -216,11 +232,11 @@ namespace Starkku.Utilities.FileTypes
                     {
                         var commentsBefore = kvp.GetAllCommentsAtPosition(INICommentPosition.Before);
                         foreach (INIComment comment in commentsBefore)
-                            lines.Add(";" + comment.CommentText);
+                            lines.Add(comment.GetINIText());
                     }
 
                     var commentsMiddle = kvp.GetAllCommentsAtPosition(INICommentPosition.Middle);
-                    string lineComment = commentsMiddle.Count > 0 && saveComments ? " ;" + commentsMiddle[0].CommentText : "";
+                    string lineComment = commentsMiddle.Count > 0 && saveComments ? commentsMiddle[0].GetINIText() : "";
 
                     if (kvp.Value != null)
                         lines.Add(kvp.Key + "=" + kvp.Value + lineComment);
@@ -231,19 +247,17 @@ namespace Starkku.Utilities.FileTypes
                     {
                         var commentsAfter = kvp.GetAllCommentsAtPosition(INICommentPosition.After);
                         foreach (INIComment comment in commentsAfter)
-                            lines.Add(";" + comment.CommentText);
+                            lines.Add(comment.GetINIText());
+                    }
+
+                    if (preserveEmptyLines)
+                    {
+                        for (int i = 0; i < kvp.EmptyLineCount; i++)
+                        {
+                            lines.Add("");
+                        }
                     }
                 }
-
-                if (saveComments)
-                {
-                    var sectionCommentsAfter = sec.GetAllCommentsAtPosition(INICommentPosition.After);
-                    foreach (INIComment comment in sectionCommentsAfter)
-                        lines.Add(";" + comment.CommentText);
-                }
-
-                if (preserveWhiteSpace)
-                    lines.Add("");
             }
 
             try
@@ -269,26 +283,25 @@ namespace Starkku.Utilities.FileTypes
             string key = null;
             string value = null;
             string comments = null;
+            int whiteSpaceCount = 0;
+            string lineMod = line;
+
+            if (lineMod.Contains(";"))
+            {
+                int index = lineMod.IndexOf(';');
+                comments = lineMod.Substring(index, line.Length - index);
+                lineMod = line.Replace(comments, "").Trim();
+                whiteSpaceCount = line.Replace(lineMod, "").Replace(comments, "").Length;
+                comments = comments.ReplaceFirst(";", "");
+            }
 
             if (line.Contains("="))
             {
-                string lineMod = line;
-
-                if (lineMod.Contains(";"))
-                    lineMod = RemoveCommentsFromLine(lineMod, out comments);
-
                 key = lineMod.Substring(0, lineMod.IndexOf('=')).Trim();
                 value = lineMod.Substring(lineMod.IndexOf('=') + 1, lineMod.Length - lineMod.IndexOf('=') - 1).Trim();
             }
             else
-            {
-                string lineMod = line;
-
-                if (lineMod.Contains(";"))
-                    lineMod = RemoveCommentsFromLine(lineMod, out comments);
-
                 key = lineMod.Trim();
-            }
 
             INIKeyValuePair kvp = new INIKeyValuePair(key, value);
             INIKeyValuePair kvpMatch = section.KeyValuePairs.Find(x => x.Key == kvp.Key);
@@ -305,27 +318,13 @@ namespace Starkku.Utilities.FileTypes
 
             if (comments != null)
             {
-                INIComment iniComment = new INIComment(comments, INICommentPosition.Middle);
+                INIComment iniComment = new INIComment(comments, INICommentPosition.Middle, whiteSpaceCount);
+
                 if (!kvp.HasComment(iniComment))
-                    kvp.AddComment(comments, INICommentPosition.Middle);
+                    kvp.AddComment(iniComment);
             }
 
             return kvp;
-        }
-
-        /// <summary>
-        /// Returns line of text without comments.
-        /// </summary>
-        /// <param name="line">Line of text to remove the comments from.</param>
-        /// <param name="comments">When method returns, contains the removed comments.</param>
-        /// <returns><paramref name="line"/> with comments removed.</returns>
-        private string RemoveCommentsFromLine(string line, out string comments)
-        {
-            int index = line.IndexOf(';');
-            comments = line.Substring(index, line.Length - index);
-            string lineNoComments = line.Replace(comments, "").Trim();
-            comments = comments.ReplaceFirst(";", "");
-            return lineNoComments;
         }
 
         /// <summary>
@@ -475,7 +474,7 @@ namespace Starkku.Utilities.FileTypes
 
             INIKeyValuePair kvp = section.KeyValuePairs.Find(i => i.Key == keyName);
 
-            if (section.KeyValuePairs.Remove(kvp)) 
+            if (section.KeyValuePairs.Remove(kvp))
             {
                 _altered = true;
                 return true;
@@ -759,7 +758,7 @@ namespace Starkku.Utilities.FileTypes
             if (section == null)
                 return false;
 
-            if(iniSections.Remove(section))
+            if (iniSections.Remove(section))
             {
                 _altered = true;
                 return true;
@@ -930,6 +929,11 @@ namespace Starkku.Utilities.FileTypes
         public string Name { get; set; } = null;
 
         /// <summary>
+        /// Number of empty lines below this section.
+        /// </summary>
+        public int EmptyLineCount = 0;
+
+        /// <summary>
         /// Key-value pairs in this INI section.
         /// </summary>
         public List<INIKeyValuePair> KeyValuePairs = new List<INIKeyValuePair>();
@@ -941,9 +945,10 @@ namespace Starkku.Utilities.FileTypes
         /// </summary>
         /// <param name="commentText">Text of the comment.</param>
         /// <param name="position">Position relative to the section.</param>
-        public void AddComment(string commentText, INICommentPosition position)
+        /// <param name="whiteSpaceCount">Number of whitespace characters between comment and rest of the line.</param>
+        public void AddComment(string commentText, INICommentPosition position, int whiteSpaceCount)
         {
-            attachedComments.Add(new INIComment(commentText, position));
+            attachedComments.Add(new INIComment(commentText, position, whiteSpaceCount));
         }
 
         /// <summary>
@@ -995,6 +1000,11 @@ namespace Starkku.Utilities.FileTypes
         /// </summary>
         public int SortIndex = int.MaxValue;
 
+        /// <summary>
+        /// Number of empty lines below this key-value pair.
+        /// </summary>
+        public int EmptyLineCount = 0;
+
         private List<INIComment> attachedComments = new List<INIComment>();
 
         /// <summary>
@@ -1013,9 +1023,10 @@ namespace Starkku.Utilities.FileTypes
         /// </summary>
         /// <param name="commentText">Text of the comment.</param>
         /// <param name="position">Position relative to the key-value pair.</param>
-        public void AddComment(string commentText, INICommentPosition position)
+        /// <param name="whiteSpaceCount">Number of whitespace characters between comment and rest of the line.</param>
+        public void AddComment(string commentText, INICommentPosition position, int whiteSpaceCount)
         {
-            attachedComments.Add(new INIComment(commentText, position));
+            attachedComments.Add(new INIComment(commentText, position, whiteSpaceCount));
         }
 
         /// <summary>
@@ -1063,14 +1074,30 @@ namespace Starkku.Utilities.FileTypes
         public INICommentPosition Position { get; set; }
 
         /// <summary>
+        /// Number of whitespace characters between comment and rest of the line.
+        /// </summary>
+        public int WhitespaceCount { get; set; } = 0;
+
+        /// <summary>
         /// Creates a new INI comment.
         /// </summary>
         /// <param name="commentText">Text of the comment.</param>
         /// <param name="position">Position relative to the section or a line it is attached to.</param>
-        public INIComment(string commentText, INICommentPosition position)
+        /// <param name="whiteSpaceCount">Number of whitespace characters between comment and rest of the line.</param>
+        public INIComment(string commentText, INICommentPosition position, int whiteSpaceCount)
         {
             CommentText = commentText;
             Position = position;
+            WhitespaceCount = whiteSpaceCount;
+        }
+
+        /// <summary>
+        /// Get comment text to save to INI file.
+        /// </summary>
+        /// <returns></returns>
+        public string GetINIText()
+        {
+            return ";".PadLeft(WhitespaceCount + 1, ' ') + CommentText;
         }
     }
 

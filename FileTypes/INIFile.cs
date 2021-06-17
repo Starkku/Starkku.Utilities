@@ -192,6 +192,18 @@ namespace Starkku.Utilities.FileTypes
         /// <returns>Error message if something went wrong, null otherwise.</returns>
         public virtual string Save(string filename, bool preserveEmptyLines = true, bool saveComments = true)
         {
+            return Save(filename, preserveEmptyLines ? null : new string[0], saveComments);
+        }
+
+        /// <summary>
+        /// Saves the INI file with specified filename.
+        /// </summary>
+        /// <param name="filename">Filename to save the INI file to.</param>
+        /// <param name="preserveEmptyLinesSectionNames">Collection of INI file section names for which empty lines will be preserved. If set to null, all will be preserved.</param>
+        /// <param name="saveComments">If set, comments are saved in INI file.</param>
+        /// <returns>Error message if something went wrong, null otherwise.</returns>
+        public virtual string Save(string filename, IEnumerable<string> preserveEmptyLinesSectionNames, bool saveComments = true)
+        {
             if (string.IsNullOrEmpty(filename))
                 filename = Filename;
 
@@ -218,7 +230,7 @@ namespace Starkku.Utilities.FileTypes
                         lines.Add(comment.GetINIText());
                 }
 
-                if (preserveEmptyLines)
+                if (preserveEmptyLinesSectionNames == null || preserveEmptyLinesSectionNames.Contains(sec.Name))
                 {
                     for (int i = 0; i < sec.EmptyLineCount; i++)
                     {
@@ -226,6 +238,7 @@ namespace Starkku.Utilities.FileTypes
                     }
                 }
 
+                int counter = 0;
                 foreach (INIKeyValuePair kvp in sec.KeyValuePairs)
                 {
                     if (saveComments)
@@ -250,13 +263,20 @@ namespace Starkku.Utilities.FileTypes
                             lines.Add(comment.GetINIText());
                     }
 
-                    if (preserveEmptyLines)
+                    if (preserveEmptyLinesSectionNames == null || preserveEmptyLinesSectionNames.Contains(sec.Name))
                     {
                         for (int i = 0; i < kvp.EmptyLineCount; i++)
                         {
                             lines.Add("");
                         }
                     }
+                    else if (preserveEmptyLinesSectionNames != null && !preserveEmptyLinesSectionNames.Contains(sec.Name) &&
+                         counter == sec.KeyValuePairs.Count - 1)
+                    {
+                        lines.Add("");
+                    }
+
+                    counter++;
                 }
             }
 

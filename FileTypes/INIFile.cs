@@ -108,7 +108,7 @@ namespace Starkku.Utilities.FileTypes
 
                     if (lastLineWasSection)
                         currentSection.EmptyLineCount++;
-                    else
+                    else if (lastLine != null)
                         lastLine.EmptyLineCount++;
 
                     continue;
@@ -612,6 +612,24 @@ namespace Starkku.Utilities.FileTypes
         }
 
         /// <summary>
+        /// Gets INI key name based on its position.
+        /// </summary>
+        /// <param name="sectionName">Name of the INI file section.</param>
+        /// <param name="positionIndex">Position of the INI key.</param>
+        /// <returns>INI key name if key in that position is found, otherwise null.</returns>
+        public string GetKeyByPosition(string sectionName, int positionIndex)
+        {
+            INISection section = iniSections.Find(i => i.Name == sectionName);
+
+            if (section != null && section.KeyValuePairs.Count > positionIndex && positionIndex >= 0)
+            {
+                return section.KeyValuePairs[positionIndex].Key;
+            }
+
+            return null;
+        }
+
+        /// <summary>
         /// Moves a key in INI file section matching specific name to a specific position in order in INI file.
         /// </summary>
         /// <param name="sectionName">Name of the INI file section.</param>
@@ -656,7 +674,10 @@ namespace Starkku.Utilities.FileTypes
                         int index = Regex.IsMatch(kvp.Key, sortPatterns[i]) ? i : -1;
 
                         if (index != -1)
+                        {
+                            var pattern = sortPatterns[i];
                             kvp.SortIndex = index;
+                        }
                     }
                 }
 

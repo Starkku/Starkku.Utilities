@@ -29,7 +29,7 @@ namespace Starkku.Utilities
         /// <param name="directoryPath">Path of directory to search in.</param>
         /// <param name="fileExtensions">File extensions to check for when searching for files.</param>
         /// <param name="recursiveSearch">If true, recursively searchs through all subdirectories.</param>
-        /// <returns></returns>
+        /// <returns>Filenames from specific directory matching given file extensions.</returns>
         public static IEnumerable<string> GetFilesMatchingExtensions(string directoryPath, IEnumerable<string> fileExtensions, bool recursiveSearch = false)
         {
             SearchOption searchoption = SearchOption.AllDirectories;

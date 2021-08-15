@@ -59,6 +59,11 @@ namespace Starkku.Utilities
         public static bool WriteTimestamps { get; set; } = true;
 
         /// <summary>
+        /// Gets or sets whether or not logger writes log level labels when logging to console or provided methods.
+        /// </summary>
+        public static bool WriteLogLevelLabels { get; set; } = true;
+
+        /// <summary>
         /// Gets or sets whether or not debug-level logging is enabled outside writing to a log file.
         /// </summary>
         public static bool EnableDebugLogging { get; set; }
@@ -220,7 +225,7 @@ namespace Starkku.Utilities
             {
                 if (!onlyLogToFile)
                 {
-                    string logMessageAppended = (WriteTimestamps ? GetSeconds() + " " : "") + logLevelLabel + " " + logMessage;
+                    string logMessageAppended = (WriteTimestamps ? GetSeconds() + " " : "") + (WriteLogLevelLabels ? logLevelLabel + " " : "") + logMessage;
 
                     if (WriteToConsole)
                     {

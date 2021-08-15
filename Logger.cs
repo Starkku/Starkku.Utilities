@@ -182,6 +182,16 @@ namespace Starkku.Utilities
         }
 
         /// <summary>
+        /// Log a string as general info with custom color.
+        /// </summary>
+        /// <param name="logMessage">String to log.</param>
+        /// <param name="color">Custom message color.</param>
+        public static void Info(string logMessage, ConsoleColor color)
+        {
+            Log("[Info]", logMessage, color);
+        }
+
+        /// <summary>
         /// Logs a string as a warning.
         /// </summary>
         /// <param name="logMessage">String to log.</param>

@@ -162,7 +162,12 @@ namespace Starkku.Utilities.FileTypes
                 else
                 {
                     lastLineWasSection = false;
-                    lastLine = AddKeyValuePairFromLine(currentSection, line.Trim());
+
+                    // Ignore non-comment content before the first section.
+                    if (currentSection != null)
+                        lastLine = AddKeyValuePairFromLine(currentSection, line.Trim());
+                    else
+                        lastLine = null;
                 }
 
                 lastLineWasWhiteSpace = false;
@@ -238,9 +243,12 @@ namespace Starkku.Utilities.FileTypes
                     }
                 }
 
-                int counter = 0;
+                INIKeyValuePair lastLine = null;
+
                 foreach (INIKeyValuePair kvp in sec.KeyValuePairs)
                 {
+                    lastLine = kvp;
+
                     if (saveComments)
                     {
                         var commentsBefore = kvp.GetAllCommentsAtPosition(INICommentPosition.Before);
@@ -270,13 +278,12 @@ namespace Starkku.Utilities.FileTypes
                             lines.Add("");
                         }
                     }
-                    else if (preserveEmptyLinesSectionNames != null && !preserveEmptyLinesSectionNames.Contains(sec.Name) &&
-                         counter == sec.KeyValuePairs.Count - 1)
-                    {
-                        lines.Add("");
-                    }
+                }
 
-                    counter++;
+                if (preserveEmptyLinesSectionNames == null || preserveEmptyLinesSectionNames.Contains(sec.Name) &&
+                    lastLine != null && lastLine.EmptyLineCount < 1)
+                {
+                    lines.Add("");
                 }
             }
 

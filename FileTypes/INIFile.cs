@@ -688,12 +688,15 @@ namespace Starkku.Utilities.FileTypes
         /// </summary>
         /// <param name="sectionName">Name of the INI file section.</param>
         /// <param name="sortPatterns">Regex patterns to match to key names used to determine sorting order.</param>
-        public void SortSectionKeys(string sectionName, string[] sortPatterns)
+        /// <param name="smartSortComments">Whether or not to sort commented out keys / values.</param>
+        public void SortSectionKeys(string sectionName, string[] sortPatterns, bool smartSortComments = false)
         {
             INISection section = iniSections.Find(i => i.Name == sectionName);
 
             if (section != null)
             {
+                List<KeyValuePair<int, INIComment>> comments = new List<KeyValuePair<int, INIComment>>();
+
                 for (int i = 0; i < sortPatterns.Length; i++)
                 {
                     foreach (INIKeyValuePair kvp in section.KeyValuePairs)
@@ -701,14 +704,41 @@ namespace Starkku.Utilities.FileTypes
                         int index = Regex.IsMatch(kvp.Key, sortPatterns[i]) ? i : -1;
 
                         if (index != -1)
-                        {
-                            var pattern = sortPatterns[i];
                             kvp.SortIndex = index;
+
+                        if (smartSortComments && kvp.HasComments())
+                        {
+                            foreach (INIComment comment in kvp.GetAllComments())
+                            {
+                                var split = comment.CommentText.Split('=');
+
+                                if (split.Length < 2)
+                                    continue;
+
+                                index = Regex.IsMatch(split[0].Trim(), sortPatterns[i]) ? i : -1;
+
+                                if (index != -1)
+                                {
+                                    comments.Add(new KeyValuePair<int, INIComment>(index, comment));
+                                    kvp.RemoveComment(comment);
+                                }
+                            }
                         }
                     }
                 }
 
                 section.KeyValuePairs = section.KeyValuePairs.OrderBy(x => x.SortIndex).ToList();
+
+                foreach (KeyValuePair<int, INIComment> kvp in comments)
+                {
+                    int index = FindClosestMatch(section, kvp.Key);
+
+                    var sectionKvp = section.KeyValuePairs[index];
+
+                    kvp.Value.Position = INICommentPosition.After;
+                    sectionKvp.AddComment(kvp.Value);
+
+                }
 
                 foreach (INIKeyValuePair kvp in section.KeyValuePairs)
                 {
@@ -717,6 +747,21 @@ namespace Starkku.Utilities.FileTypes
 
                 _altered = true;
             }
+        }
+
+        private int FindClosestMatch(INISection section, int sortIndex)
+        {
+            int itemIndex = 0;
+
+            foreach (INIKeyValuePair kvp in section.KeyValuePairs)
+            {
+                if (kvp.SortIndex <= sortIndex)
+                    itemIndex = section.KeyValuePairs.IndexOf(kvp);
+                else
+                    break;
+            }
+
+            return itemIndex;
         }
 
         /// <summary>
@@ -986,7 +1031,7 @@ namespace Starkku.Utilities.FileTypes
         /// </summary>
         public List<INIKeyValuePair> KeyValuePairs = new List<INIKeyValuePair>();
 
-        private List<INIComment> attachedComments = new List<INIComment>();
+        private readonly List<INIComment> attachedComments = new List<INIComment>();
 
         /// <summary>
         /// Adds a comment to this section, created from text and position setting.
@@ -1009,6 +1054,15 @@ namespace Starkku.Utilities.FileTypes
         }
 
         /// <summary>
+        /// Checks whether or not this section contains any comments.
+        /// </summary>
+        /// <returns>True if section contains comments, otherwise false.</returns>
+        public bool HasComments()
+        {
+            return attachedComments.Count > 0;
+        }
+
+        /// <summary>
         /// Checks whether or not this section already contains a matching comment.
         /// </summary>
         /// <returns>True if section contains a matching comment, otherwise false.</returns>
@@ -1025,6 +1079,24 @@ namespace Starkku.Utilities.FileTypes
         public List<INIComment> GetAllCommentsAtPosition(INICommentPosition position)
         {
             return attachedComments.FindAll(x => x.Position == position);
+        }
+
+        /// <summary>
+        /// Returns a list of all comments that belong to this section.
+        /// </summary>
+        /// <returns>List of all commits belonging to this section.</returns>
+        public List<INIComment> GetAllComments()
+        {
+            return attachedComments.ToList();
+        }
+
+        /// <summary>
+        /// Removes comment from section if it exists.
+        /// </summary>
+        /// <returns>True if section contains a matching comment and it was removed, otherwise false.</returns>
+        public bool RemoveComment(INIComment comment)
+        {
+            return attachedComments.Remove(comment);
         }
     }
 
@@ -1053,7 +1125,7 @@ namespace Starkku.Utilities.FileTypes
         /// </summary>
         public int EmptyLineCount = 0;
 
-        private List<INIComment> attachedComments = new List<INIComment>();
+        private readonly List<INIComment> attachedComments = new List<INIComment>();
 
         /// <summary>
         /// Creates new INI key-value pair.
@@ -1087,6 +1159,15 @@ namespace Starkku.Utilities.FileTypes
         }
 
         /// <summary>
+        /// Checks whether or not this key-value pair contains any comments.
+        /// </summary>
+        /// <returns>True if key-value pair contains comments, otherwise false.</returns>
+        public bool HasComments()
+        {
+            return attachedComments.Count > 0;
+        }
+
+        /// <summary>
         /// Checks whether or not this key-value pair already contains a matching comment.
         /// </summary>
         /// <returns>True if key-value pair contains a matching comment, otherwise false.</returns>
@@ -1103,6 +1184,24 @@ namespace Starkku.Utilities.FileTypes
         public List<INIComment> GetAllCommentsAtPosition(INICommentPosition position)
         {
             return attachedComments.FindAll(x => x.Position == position);
+        }
+
+        /// <summary>
+        /// Returns a list of all comments that belong to this key-value pair.
+        /// </summary>
+        /// <returns>List of all commits belonging to this key-value pair.</returns>
+        public List<INIComment> GetAllComments()
+        {
+            return attachedComments.ToList();
+        }
+
+        /// <summary>
+        /// Removes comment from key-value pair if it exists.
+        /// </summary>
+        /// <returns>True if key-value pair contains a matching comment and it was removed, otherwise false.</returns>
+        public bool RemoveComment(INIComment comment)
+        {
+            return attachedComments.Remove(comment);
         }
     }
 

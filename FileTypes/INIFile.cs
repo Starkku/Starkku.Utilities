@@ -245,8 +245,9 @@ namespace Starkku.Utilities.FileTypes
 
                 INIKeyValuePair lastLine = null;
 
-                foreach (INIKeyValuePair kvp in sec.KeyValuePairs)
+                for (int index = 0; index < sec.KeyValuePairs.Count; index++)
                 {
+                    INIKeyValuePair kvp = sec.KeyValuePairs[index];
                     lastLine = kvp;
 
                     if (saveComments)
@@ -278,12 +279,11 @@ namespace Starkku.Utilities.FileTypes
                             lines.Add("");
                         }
                     }
-                }
-
-                if (preserveEmptyLinesSectionNames == null || preserveEmptyLinesSectionNames.Contains(sec.Name) &&
-                    lastLine != null && lastLine.EmptyLineCount < 1)
-                {
-                    lines.Add("");
+                    else if (preserveEmptyLinesSectionNames != null && !preserveEmptyLinesSectionNames.Contains(sec.Name) &&
+                         index == sec.KeyValuePairs.Count - 1)
+                    {
+                        lines.Add("");
+                    }
                 }
             }
 

@@ -168,6 +168,17 @@ namespace Starkku.Utilities.FileTypes
                         lastLine = AddKeyValuePairFromLine(currentSection, line.Trim());
                     else
                         lastLine = null;
+
+                    if (lastLine != null)
+                    {
+                        foreach (INIComment comment in comments)
+                        {
+                            if (!lastLine.HasComment(comment))
+                                lastLine.AddComment(comment);
+                        }
+
+                        comments.Clear();
+                    }
                 }
 
                 lastLineWasWhiteSpace = false;

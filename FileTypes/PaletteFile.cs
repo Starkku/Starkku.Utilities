@@ -13,6 +13,8 @@
  */
 
 using System;
+using System.Collections.Generic;
+using System.Drawing;
 using System.IO;
 using System.Linq;
 using Starkku.Utilities.DataStructures;
@@ -249,6 +251,41 @@ namespace Starkku.Utilities.FileTypes
         }
 
         /// <summary>
+        /// Saves 256x1 pixel PNG image with one pixel of each palette color.
+        /// </summary>
+        /// <param name="filename">Filename to save to. If not set, current filename with .png extension is used.</param>
+        /// <returns>True if saved successfully, false otherwise.</returns>
+        public bool SavePNG(string filename = null)
+        {
+            if (!Initialized)
+                return false;
+
+            string fileout = Path.ChangeExtension(Filename, ".png");
+
+            if (filename != null)
+                fileout = filename;
+            try
+            {
+                Bitmap bitmap = new Bitmap(256, 1);
+
+                for (int i = 0; i < Math.Min(ColorCount, 256); i++)
+                {
+                    var color = colors[i].GetColor();
+                    bitmap.SetPixel(i, 0, color);
+                }
+
+                bitmap.Save(fileout, System.Drawing.Imaging.ImageFormat.Png);
+                bitmap.Dispose();
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
         /// Calculates alpha value for each palette color based on average of RGB values and a separately defined divisor.
         /// </summary>
         /// <param name="divisor">Divisor used in calculating the average. Defaults to 3.0 as per the 3 color channels.</param>
@@ -299,6 +336,10 @@ namespace Starkku.Utilities.FileTypes
                         break;
                     case PaletteColorSortMode.Alpha:
                         compare = colors[i].Alpha;
+                        break;
+                    case PaletteColorSortMode.Brightness:
+                        HSVColor hsv = colors[i].GetHSVColor();
+                        compare = (int)Math.Round(hsv.Value * 255);
                         break;
                     case PaletteColorSortMode.RGB:
                         compare = (colors[i].Red + colors[i].Green + colors[i].Blue) / 3;
@@ -367,13 +408,16 @@ namespace Starkku.Utilities.FileTypes
         /// Sorts the palette colors based on given sorting mode.
         /// </summary>
         /// <param name="sortMode">Sorting mode used when sorting colors.</param>
-        public void SortColors(PaletteColorSortMode sortMode)
+        /// <param name="startIndex">Index from which to start sorting.</param>
+        /// <param name="gradientCount">Number of gradients to sort colors into, used for gradients sort mode.</param>
+        /// <param name="saturationThreshold">Threshold used to split colors into high and low saturation, used for gradients sort mode.</param>
+        public void SortColors(PaletteColorSortMode sortMode, int startIndex = 1, int gradientCount = 8, double saturationThreshold = 0.33)
         {
             if (colors == null || ColorCount < 1 || !Initialized)
                 return;
 
-            PaletteColor[] colors_sorted = new PaletteColor[255];
-            Array.Copy(colors, 1, colors_sorted, 0, 255);
+            PaletteColor[] colors_sorted = new PaletteColor[ColorCount - startIndex];
+            Array.Copy(colors, startIndex, colors_sorted, 0, ColorCount - startIndex);
 
             switch (sortMode)
             {
@@ -398,17 +442,61 @@ namespace Starkku.Utilities.FileTypes
                 case PaletteColorSortMode.Alpha:
                     Array.Sort(colors_sorted, new PaletteColorAlphaComparer());
                     break;
+                case PaletteColorSortMode.Brightness:
+                    Array.Sort(colors_sorted, new PaletteColorBrightnessComparer());
+                    break;
                 case PaletteColorSortMode.RGB:
                     Array.Sort(colors_sorted, new PaletteColorRGBComparer());
+                    break;
+                case PaletteColorSortMode.Gradients:
+                    //Array.Sort(colors_sorted, new PaletteColorStepSortComparer());
+                    colors_sorted = SortColorsToGradients(colors_sorted, gradientCount, saturationThreshold);
                     break;
                 default:
                     break;
             }
 
-            for (int i = 1; i < ColorCount; i++)
+            for (int i = startIndex; i < ColorCount; i++)
             {
-                colors[i] = colors_sorted[i - 1];
+                colors[i] = colors_sorted[i - startIndex];
             }
+        }
+
+        private PaletteColor[] SortColorsToGradients(PaletteColor[] colors, int gradientCount, double saturationThreshold)
+        {
+            double threshold = 360.0 / gradientCount;
+            List<PaletteColor>[] gradientsHighSat = new List<PaletteColor>[gradientCount];
+            List<PaletteColor>[] gradientsLowSat = new List<PaletteColor>[gradientCount];
+
+            foreach (PaletteColor color in colors)
+            {
+                var hsv = color.GetHSVColor();
+                int gradientIndex = Math.Max(Math.Min((int)Math.Round(hsv.Hue / threshold), gradientCount - 1), 0);
+                var gradients = hsv.Saturation >= saturationThreshold ? gradientsHighSat : gradientsLowSat;
+
+                if (gradients[gradientIndex] == null)
+                    gradients[gradientIndex] = new List<PaletteColor>();
+
+                gradients[gradientIndex].Add(color);
+            }
+
+            var sortedColors = new List<PaletteColor>();
+            var gradientsL = gradientsHighSat;
+
+            for (int j = 0; j < 2; j++)
+            {
+                for (int i = 0; i < gradientCount; i++)
+                {
+                    var gradientList = gradientsL[i];
+                    gradientList.Sort(new PaletteColorBrightnessComparer());
+                    gradientList.Reverse();
+                    sortedColors.AddRange(gradientList);
+                }
+
+                gradientsL = gradientsLowSat;
+            }
+
+            return sortedColors.ToArray();
         }
 
         /// <summary>
@@ -503,5 +591,5 @@ namespace Starkku.Utilities.FileTypes
     /// <summary>
     /// Palette color sort mode.
     /// </summary>
-    public enum PaletteColorSortMode { Hue, Saturation, Light, Red, Green, Blue, Alpha, RGB };
+    public enum PaletteColorSortMode { Hue, Saturation, Light, Red, Green, Blue, Alpha, Brightness, RGB, Gradients };
 }

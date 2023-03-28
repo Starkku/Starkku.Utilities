@@ -13,6 +13,7 @@
  */
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 
 namespace Starkku.Utilities.DataStructures
 {
@@ -35,6 +36,27 @@ namespace Starkku.Utilities.DataStructures
         /// Light component of the HSL color.
         /// </summary>
         public double Light { get; set; }
+    }
+
+    /// <summary>
+    /// Generic HSV color struct.
+    /// </summary>
+    public struct HSVColor
+    {
+        /// <summary>
+        /// Hue component of the HSV color.
+        /// </summary>
+        public double Hue { get; set; }
+
+        /// <summary>
+        /// Saturation component of the HSV color.
+        /// </summary>
+        public double Saturation { get; set; }
+
+        /// <summary>
+        /// Value component of the HSV color.
+        /// </summary>
+        public double Value { get; set; }
     }
 
     /// <summary>
@@ -85,6 +107,18 @@ namespace Starkku.Utilities.DataStructures
         }
 
         /// <summary>
+        /// Create new palette color from specified color.
+        /// </summary>
+        /// <param name="color">Color to create palette color from.</param>
+        public PaletteColor(Color color)
+        {
+            Red = color.R;
+            Green = color.G;
+            Blue = color.B;
+            Alpha = color.A;
+        }
+
+        /// <summary>
         /// Get a HSL color space equivalent of this RGB(A) palette color.
         /// </summary>
         /// <returns>HSL color matching this RGB(A) palette color.</returns>
@@ -118,6 +152,26 @@ namespace Starkku.Utilities.DataStructures
 
             return hsl;
         }
+
+        /// <summary>
+        /// Get a HSV color space equivalent of this RGB(A) palette color.
+        /// </summary>
+        /// <returns>HSV color matching this RGB(A) palette color.</returns>
+        public HSVColor GetHSVColor()
+        {
+            HSVColor hsv = new HSVColor();
+
+            int max = Math.Max(Red, Math.Max(Green, Blue));
+            int min = Math.Min(Red, Math.Min(Green, Blue));
+
+            hsv.Hue = GetColor().GetHue();
+            hsv.Saturation = (max == 0) ? 0 : 1d - (1d * min / max);
+            hsv.Value = max / 255d;
+
+            return hsv;
+        }
+
+        public Color GetColor() => Color.FromArgb(Alpha, Red, Green, Blue);
     }
 
     /// <summary>
@@ -230,8 +284,8 @@ namespace Starkku.Utilities.DataStructures
     {
         public int Compare(PaletteColor x, PaletteColor y)
         {
-            HSLColor x_hsl = x.GetHSLColor();
-            HSLColor y_hsl = y.GetHSLColor();
+            var x_hsl = x.GetHSLColor();
+            var y_hsl = y.GetHSLColor();
 
             if (x_hsl.Hue < y_hsl.Hue)
                 return -1;
@@ -259,8 +313,8 @@ namespace Starkku.Utilities.DataStructures
     {
         public int Compare(PaletteColor x, PaletteColor y)
         {
-            HSLColor x_hsl = x.GetHSLColor();
-            HSLColor y_hsl = y.GetHSLColor();
+            var x_hsl = x.GetHSLColor();
+            var y_hsl = y.GetHSLColor();
 
             if (x_hsl.Saturation < y_hsl.Saturation)
                 return -1;
@@ -288,8 +342,8 @@ namespace Starkku.Utilities.DataStructures
     {
         public int Compare(PaletteColor x, PaletteColor y)
         {
-            HSLColor x_hsl = x.GetHSLColor();
-            HSLColor y_hsl = y.GetHSLColor();
+            var x_hsl = x.GetHSLColor();
+            var y_hsl = y.GetHSLColor();
 
             if (x_hsl.Light < y_hsl.Light)
                 return -1;
@@ -307,6 +361,60 @@ namespace Starkku.Utilities.DataStructures
                 else
                     return 1;
             }
+        }
+    }
+
+    /// <summary>
+    /// RGB(A) palette color brightness comparer class.
+    /// </summary>
+    public class PaletteColorBrightnessComparer : IComparer<PaletteColor>
+    {
+        public int Compare(PaletteColor x, PaletteColor y)
+        {
+            var x_hsv = x.GetHSVColor();
+            var y_hsv= y.GetHSVColor();
+
+            if (x_hsv.Value < y_hsv.Value)
+                return -1;
+            else if (x_hsv.Value > y_hsv.Value)
+                return 1;
+            else
+            {
+                int rgb = x.Red + x.Green + x.Blue;
+                int rgbOther = y.Red + y.Green + y.Blue;
+
+                if (rgb < rgbOther)
+                    return -1;
+                else if (rgb == rgbOther)
+                    return 0;
+                else
+                    return 1;
+            }
+        }
+    }
+
+    /// <summary>
+    /// RGB(A) palette color step sort comparer class.
+    /// </summary>
+    public class PaletteColorStepSortComparer : IComparer<PaletteColor>
+    {
+        public int Compare(PaletteColor x, PaletteColor y)
+        {
+            var stepX = Step(x);
+            var stepY = Step(y);
+
+            return stepX.CompareTo(stepY);
+        }
+
+        private static int Step(PaletteColor color, int repetitions = 8)
+        {
+            var lum = Math.Sqrt(.241 * color.Red + .691 * color.Green + .068 * color.Blue);
+            var hsv = color.GetHSVColor();
+            var hue = (int)(hsv.Hue * repetitions);
+            var lum2 = (int)(lum * repetitions);
+            var val = (int)(hsv.Value * repetitions);
+
+            return hue + lum2 + val;
         }
     }
 

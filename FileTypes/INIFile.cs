@@ -17,6 +17,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading;
 using Starkku.Utilities.ExtensionMethods;
 
 namespace Starkku.Utilities.FileTypes
@@ -31,12 +32,12 @@ namespace Starkku.Utilities.FileTypes
         /// </summary>
         public string Filename { get; set; }
 
-        protected bool _altered = false;
+        private int _altered = 0;
 
         /// <summary>
         /// Gets whether or not any INI sections, keys or values have been altered since last load or save.
         /// </summary>
-        public bool Altered => _altered;
+        public bool Altered => Volatile.Read(ref _altered) != 0;
 
         private readonly List<INISection> iniSections = new List<INISection>();
 
@@ -56,7 +57,7 @@ namespace Starkku.Utilities.FileTypes
         /// <returns>Error message if something went wrong, null otherwise.</returns>
         public virtual string Reload()
         {
-            _altered = false;
+            Interlocked.Exchange(ref _altered, 0);
             return Parse(Filename, true);
         }
 
@@ -66,7 +67,7 @@ namespace Starkku.Utilities.FileTypes
         /// <returns>Error message if something went wrong, null otherwise.</returns>
         public virtual string Load(string filename)
         {
-            _altered = false;
+            Interlocked.Exchange(ref _altered, 0);
             return Parse(filename, true);
         }
 
@@ -184,7 +185,7 @@ namespace Starkku.Utilities.FileTypes
                 lastLineWasWhiteSpace = false;
             }
 
-            _altered = false;
+            Interlocked.Exchange(ref _altered, 0);
             return null;
         }
 
@@ -301,7 +302,7 @@ namespace Starkku.Utilities.FileTypes
             try
             {
                 File.WriteAllLines(filename, lines.ToArray());
-                _altered = false;
+                Interlocked.Exchange(ref _altered, 1);
                 return null;
             }
             catch (Exception e)
@@ -494,7 +495,7 @@ namespace Starkku.Utilities.FileTypes
             else
                 kvp.Value = value;
 
-            _altered = true;
+            Interlocked.Exchange(ref _altered, 1);
         }
 
         /// <summary>
@@ -514,7 +515,7 @@ namespace Starkku.Utilities.FileTypes
 
             if (section.KeyValuePairs.Remove(kvp))
             {
-                _altered = true;
+                Interlocked.Exchange(ref _altered, 1);
                 return true;
             }
 
@@ -541,7 +542,7 @@ namespace Starkku.Utilities.FileTypes
             if (kvp != null)
             {
                 kvp.Key = newKeyName;
-                _altered = true;
+                Interlocked.Exchange(ref _altered, 1);
                 return true;
             }
 
@@ -687,7 +688,7 @@ namespace Starkku.Utilities.FileTypes
 
                 section.KeyValuePairs.Remove(kvp);
                 section.KeyValuePairs.Insert(positionIndex, kvp);
-                _altered = true;
+                Interlocked.Exchange(ref _altered, 1);
                 return true;
             }
 
@@ -702,6 +703,24 @@ namespace Starkku.Utilities.FileTypes
         /// <param name="smartSortComments">Whether or not to sort commented out keys / values.</param>
         public void SortSectionKeys(string sectionName, string[] sortPatterns, bool smartSortComments = false)
         {
+            var patterns = new Regex[sortPatterns.Length];
+
+            for (int i = 0; i < patterns.Length; i++)
+            {
+                patterns[i] = new Regex(sortPatterns[i]);
+            }
+
+            SortSectionKeys(sectionName, patterns, smartSortComments);
+        }
+
+        /// <summary>
+        /// Sorts keys in the INI file section based on a list of regex patterns matching key names.
+        /// </summary>
+        /// <param name="sectionName">Name of the INI file section.</param>
+        /// <param name="sortPatterns">Regex patterns to match to key names used to determine sorting order.</param>
+        /// <param name="smartSortComments">Whether or not to sort commented out keys / values.</param>
+        public void SortSectionKeys(string sectionName, Regex[] sortPatterns, bool smartSortComments = false)
+        {
             INISection section = iniSections.Find(i => i.Name == sectionName);
 
             if (section != null)
@@ -712,7 +731,7 @@ namespace Starkku.Utilities.FileTypes
                 {
                     foreach (INIKeyValuePair kvp in section.KeyValuePairs)
                     {
-                        int index = Regex.IsMatch(kvp.Key, sortPatterns[i]) ? i : -1;
+                        int index = sortPatterns[i].IsMatch(kvp.Key) ? i : -1;
 
                         if (index != -1)
                             kvp.SortIndex = index;
@@ -726,7 +745,7 @@ namespace Starkku.Utilities.FileTypes
                                 if (split.Length < 2)
                                     continue;
 
-                                index = Regex.IsMatch(split[0].Trim(), sortPatterns[i]) ? i : -1;
+                                index = sortPatterns[i].IsMatch(split[0].Trim()) ? i : -1;
 
                                 if (index != -1)
                                 {
@@ -756,7 +775,7 @@ namespace Starkku.Utilities.FileTypes
                     kvp.SortIndex = int.MaxValue;
                 }
 
-                _altered = true;
+                Interlocked.Exchange(ref _altered, 1);
             }
         }
 
@@ -814,7 +833,7 @@ namespace Starkku.Utilities.FileTypes
                 if (section == null)
                 {
                     iniSections.Add(newSection);
-                    _altered = true;
+                    Interlocked.Exchange(ref _altered, 1);
                     continue;
                 }
 
@@ -839,12 +858,12 @@ namespace Starkku.Utilities.FileTypes
                                 kvp.AddComment(comment);
                         }
 
-                        _altered = true;
+                        Interlocked.Exchange(ref _altered, 1);
                     }
                     else
                     {
                         section.KeyValuePairs.Add(newKvp);
-                        _altered = true;
+                        Interlocked.Exchange(ref _altered, 1);
                     }
                 }
             }
@@ -864,7 +883,7 @@ namespace Starkku.Utilities.FileTypes
 
             if (iniSections.Remove(section))
             {
-                _altered = true;
+                Interlocked.Exchange(ref _altered, 1);
                 return true;
             }
 
@@ -884,7 +903,7 @@ namespace Starkku.Utilities.FileTypes
                 return false;
 
             section.Name = newSectionName;
-            _altered = true;
+            Interlocked.Exchange(ref _altered, 1);
             return true;
         }
 
@@ -904,7 +923,7 @@ namespace Starkku.Utilities.FileTypes
                 };
 
                 iniSections.Add(section);
-                _altered = true;
+                Interlocked.Exchange(ref _altered, 1);
                 return true;
             }
 
@@ -963,7 +982,7 @@ namespace Starkku.Utilities.FileTypes
             {
                 iniSections.Remove(section);
                 iniSections.Insert(positionIndex, section);
-                _altered = true;
+                Interlocked.Exchange(ref _altered, 1);
                 return true;
             }
 
@@ -993,7 +1012,7 @@ namespace Starkku.Utilities.FileTypes
                 section.KeyValuePairs.Add(new INIKeyValuePair(c++.ToString(), line));
             }
 
-            _altered = true;
+            Interlocked.Exchange(ref _altered, 1);
         }
 
         /// <summary>
@@ -1018,7 +1037,7 @@ namespace Starkku.Utilities.FileTypes
                 section.KeyValuePairs.Add(new INIKeyValuePair(kvp.Key, kvp.Value));
             }
 
-            _altered = true;
+            Interlocked.Exchange(ref _altered, 1);
         }
     }
 
